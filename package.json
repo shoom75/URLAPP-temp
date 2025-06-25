@@ -6,7 +6,7 @@
   "dependencies": {
     "@supabase/postgrest-js": "^1.6.0",
     "@supabase/realtime-js": "^2.5.0",
-    "@supabase/supabase-js": "^2.39.4",
+    "@supabase/supabase-js": "^2.50.1",
     "express": "^5.1.0",
     "firebase": "^11.8.0",
     "next": "^15.3.3",
@@ -17,12 +17,9 @@
     "buffer": "^6.0.3",
     "parcel": "^2.10.3"
   },
- 
-
-
   "scripts": {
     "postinstall": "npm rebuild parcel",
-     "build": "npx parcel build src/public/index.html --dist-dir dist --no-cache --no-optimize"
+    "build": "npx parcel build src/public/index.html --dist-dir dist --no-cache --no-optimize"
   },
   "browser": {
     "./node_modules/@supabase/realtime-js/dist/module/RealtimeSubscription": false
