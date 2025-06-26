@@ -1,7 +1,7 @@
-import { addUrl, deleteUrl } from "../utils/dbOperations.js";
+import { addUrl, deleteUrl, retryImageForUrl } from "../utils/dbOperations.js";
 import { getPreview, retryInstagramImageUrl } from "../utils/fetchPreview.js";
 import { supabase } from "../utils/supabaseClient.js";
-import { getProxyUrl } from "./sharedUI.js";
+// getProxyUrl は使わないのでインポート不要にしてもOK
 
 let lastUrlsJson = "";
 let lastUrlIds = new Set();
@@ -40,12 +40,9 @@ export function setupUrlHandlers() {
             return;
         }
         try {
-            // URLのプレビュー画像を取得
             const imageUrl = await getPreview(rawUrl);
-            // プレースホルダー画像じゃなければ有効と判定
             const isImageValid = imageUrl && !imageUrl.includes('placehold.co');
 
-            // 重要: addUrlは7引数。6番目にisImageValid、7番目にgroupIdを渡す
             const result = await addUrl(
                 rawUrl,
                 title,
@@ -70,7 +67,7 @@ export function setupUrlHandlers() {
         }
     });
 
-    // リアルタイムURL追加監視用のサブスクリプション
+    // リアルタイムURL追加監視用サブスクリプション
     let urlSubscription = null;
     function subscribeRealtimeUrls() {
         if (urlSubscription) {
@@ -95,15 +92,14 @@ export function setupUrlHandlers() {
             .subscribe();
     }
 
-    // グループ切替時にサブスクリプションを更新
+    // グループ切替時にサブスクリプション更新
     window.addEventListener("setCurrentGroup", () => {
         subscribeRealtimeUrls();
     });
 
-    // 初期化時に一度サブスクリプション開始
     subscribeRealtimeUrls();
 
-    // URL一覧の読み込み＆表示関数
+    // URL一覧読み込み＆表示
     window.loadUrls = async function loadUrls() {
         if (!window.currentUser || !window.currentGroupId) {
             urlList.innerHTML = "";
@@ -129,7 +125,8 @@ export function setupUrlHandlers() {
         }
 
         urls.forEach(({ id, url, title, thumbnail_url }) => {
-            const proxyThumbnail = thumbnail_url ? getProxyUrl(thumbnail_url) : "https://placehold.co/80x80";
+            // ★ここでgetProxyUrlを使わず、thumbnail_urlをそのまま使う
+            const proxyThumbnail = thumbnail_url ? thumbnail_url : "https://placehold.co/80x80";
 
             const li = document.createElement("li");
             li.dataset.id = id;
@@ -145,19 +142,21 @@ export function setupUrlHandlers() {
             img.style.objectFit = "cover";
             img.src = proxyThumbnail;
 
-            // 画像読み込みエラー時のリトライ処理（Instagram対応）
             img.onerror = async () => {
-                // 1回だけリトライするためのフラグをimgにセット
                 if (img.dataset.retried) {
                     img.src = "https://placehold.co/80x80";
                     return;
                 }
                 img.dataset.retried = "true";
 
-                const newImageUrl = await retryInstagramImageUrl(url);
-                if (newImageUrl && newImageUrl !== img.src) {
-                    img.src = newImageUrl;
-                    await supabase.from("urls").update({ thumbnail_url: newImageUrl }).eq("id", id);
+                const res = await retryImageForUrl(id, getPreview, 3);
+                if (res.success && res.isImageValid) {
+                    const { data: updatedData, error } = await supabase.from("urls").select("thumbnail_url").eq("id", id).single();
+                    if (!error && updatedData?.thumbnail_url) {
+                        img.src = updatedData.thumbnail_url;
+                    } else {
+                        img.src = "https://placehold.co/80x80";
+                    }
                 } else {
                     img.src = "https://placehold.co/80x80";
                 }
@@ -203,11 +202,11 @@ export function setupUrlHandlers() {
 
         if (!urls) return;
 
-        // 差分だけ抽出
         const newUrls = urls.filter(u => !lastUrlIds.has(u.id));
         if (newUrls.length > 0) {
             newUrls.forEach(({ id, url, title, thumbnail_url }) => {
-                const proxyThumbnail = thumbnail_url ? getProxyUrl(thumbnail_url) : "https://placehold.co/80x80";
+                // ★ここもgetProxyUrlを使わずそのまま
+                const proxyThumbnail = thumbnail_url ? thumbnail_url : "https://placehold.co/80x80";
 
                 const li = document.createElement("li");
                 li.dataset.id = id;
@@ -254,12 +253,13 @@ export function setupUrlHandlers() {
                 lastUrlIds.add(id);
             });
         }
-        // 初回やグループ切替時は全件セット
+
         if (lastUrlIds.size !== urls.length) {
             urlList.innerHTML = "";
             lastUrlIds = new Set();
             urls.forEach(({ id, url, title, thumbnail_url }) => {
-                const proxyThumbnail = thumbnail_url ? getProxyUrl(thumbnail_url) : "https://placehold.co/80x80";
+                // ★ここもgetProxyUrlを使わずそのまま
+                const proxyThumbnail = thumbnail_url ? thumbnail_url : "https://placehold.co/80x80";
 
                 const li = document.createElement("li");
                 li.dataset.id = id;

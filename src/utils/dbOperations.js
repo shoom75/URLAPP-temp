@@ -85,14 +85,15 @@ export async function retryImageForUrl(urlId, getPreview, maxRetry = 3) {
   const { data, error } = await supabase.from('urls').select('*').eq('id', urlId).single();
   if (error || !data) return { success: false, error };
 
-  if (data.is_image_valid) return { success: true, message: "Already valid" };
+  // リトライ回数が上限を超えていたら終了
   if (data.image_retry_count >= maxRetry) return { success: false, message: "Retry limit reached" };
 
+  // 画像を再取得
   const imageUrl = await getPreview(data.url);
   const isImageValid = imageUrl && !imageUrl.includes('placehold.co');
   const now = new Date().toISOString();
 
-  // 成功時はリトライ回数を0、失敗時は+1
+  // 成功時はリトライ回数を0に戻し、失敗時は+1
   const newRetryCount = isImageValid ? 0 : data.image_retry_count + 1;
 
   const { error: updateError } = await supabase.from('urls').update({
