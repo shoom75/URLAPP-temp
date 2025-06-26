@@ -1,7 +1,6 @@
 import { addUrl, deleteUrl, retryImageForUrl } from "../utils/dbOperations.js";
-import { getPreview, retryInstagramImageUrl } from "../utils/fetchPreview.js";
+import { getPreview } from "../utils/fetchPreview.js";
 import { supabase } from "../utils/supabaseClient.js";
-// getProxyUrl は使わないのでインポート不要にしてもOK
 
 let lastUrlsJson = "";
 let lastUrlIds = new Set();
@@ -67,6 +66,31 @@ export function setupUrlHandlers() {
         }
     });
 
+    // 画像再取得処理をまとめた関数
+    async function handleImageError(img, urlId) {
+        if (img.dataset.retried) {
+            img.src = "https://placehold.co/80x80";
+            return;
+        }
+        img.dataset.retried = "true";
+
+        const res = await retryImageForUrl(urlId, getPreview, 3);
+        if (res.success && res.isImageValid) {
+            const { data: updatedData, error } = await supabase
+                .from("urls")
+                .select("thumbnail_url")
+                .eq("id", urlId)
+                .single();
+            if (!error && updatedData?.thumbnail_url) {
+                img.src = updatedData.thumbnail_url;
+            } else {
+                img.src = "https://placehold.co/80x80";
+            }
+        } else {
+            img.src = "https://placehold.co/80x80";
+        }
+    }
+
     // リアルタイムURL追加監視用サブスクリプション
     let urlSubscription = null;
     function subscribeRealtimeUrls() {
@@ -85,7 +109,7 @@ export function setupUrlHandlers() {
                     table: 'urls',
                     filter: `group_id=eq.${window.currentGroupId}`
                 },
-                payload => {
+                () => {
                     window.loadUrls && window.loadUrls();
                 }
             )
@@ -125,7 +149,6 @@ export function setupUrlHandlers() {
         }
 
         urls.forEach(({ id, url, title, thumbnail_url }) => {
-            // ★ここでgetProxyUrlを使わず、thumbnail_urlをそのまま使う
             const proxyThumbnail = thumbnail_url ? thumbnail_url : "https://placehold.co/80x80";
 
             const li = document.createElement("li");
@@ -142,24 +165,13 @@ export function setupUrlHandlers() {
             img.style.objectFit = "cover";
             img.src = proxyThumbnail;
 
-            img.onerror = async () => {
-                if (img.dataset.retried) {
-                    img.src = "https://placehold.co/80x80";
-                    return;
-                }
-                img.dataset.retried = "true";
+            // プレースホルダなら即再取得トリガー（エラー待たずに）
+            if (proxyThumbnail.includes("placehold.co")) {
+                handleImageError(img, id);
+            }
 
-                const res = await retryImageForUrl(id, getPreview, 3);
-                if (res.success && res.isImageValid) {
-                    const { data: updatedData, error } = await supabase.from("urls").select("thumbnail_url").eq("id", id).single();
-                    if (!error && updatedData?.thumbnail_url) {
-                        img.src = updatedData.thumbnail_url;
-                    } else {
-                        img.src = "https://placehold.co/80x80";
-                    }
-                } else {
-                    img.src = "https://placehold.co/80x80";
-                }
+            img.onerror = async () => {
+                await handleImageError(img, id);
             };
 
             const link = document.createElement("a");
@@ -205,7 +217,6 @@ export function setupUrlHandlers() {
         const newUrls = urls.filter(u => !lastUrlIds.has(u.id));
         if (newUrls.length > 0) {
             newUrls.forEach(({ id, url, title, thumbnail_url }) => {
-                // ★ここもgetProxyUrlを使わずそのまま
                 const proxyThumbnail = thumbnail_url ? thumbnail_url : "https://placehold.co/80x80";
 
                 const li = document.createElement("li");
@@ -220,8 +231,8 @@ export function setupUrlHandlers() {
                 img.height = 80;
                 img.alt = "サムネイル";
                 img.style.objectFit = "cover";
-                img.onerror = () => (img.src = "https://placehold.co/80x80");
                 img.src = proxyThumbnail;
+                img.onerror = () => (img.src = "https://placehold.co/80x80");
 
                 const link = document.createElement("a");
                 link.target = "_blank";
@@ -258,7 +269,6 @@ export function setupUrlHandlers() {
             urlList.innerHTML = "";
             lastUrlIds = new Set();
             urls.forEach(({ id, url, title, thumbnail_url }) => {
-                // ★ここもgetProxyUrlを使わずそのまま
                 const proxyThumbnail = thumbnail_url ? thumbnail_url : "https://placehold.co/80x80";
 
                 const li = document.createElement("li");
@@ -273,8 +283,8 @@ export function setupUrlHandlers() {
                 img.height = 80;
                 img.alt = "サムネイル";
                 img.style.objectFit = "cover";
-                img.onerror = () => (img.src = "https://placehold.co/80x80");
                 img.src = proxyThumbnail;
+                img.onerror = () => (img.src = "https://placehold.co/80x80");
 
                 const link = document.createElement("a");
                 link.target = "_blank";

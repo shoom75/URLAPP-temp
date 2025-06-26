@@ -57,7 +57,7 @@ export function resetGroupSelection() {
     closeAllForms(); // リセット時にも全て閉じる
 }
 
-const PROXY_BASE_URL = "https://proxy-server-89ba.onrender.com/proxy";
+const PROXY_BASE_URL = "https://proxy-worker.shoom7575.workers.dev/";
 export function getProxyUrl(imageUrl) {
     return `${PROXY_BASE_URL}?url=${encodeURIComponent(imageUrl)}`;
 }
