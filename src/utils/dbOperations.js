@@ -15,16 +15,28 @@ export async function addUrl(url, title, category, userId, imageUrl, isImageVali
         category,
         user_id: userId,
         thumbnail_url: imageUrl,
-        group_id: groupId,
+        group_id: groupId, // ← ここでグループIDも保存
         is_image_valid: isImageValid,
         image_last_checked: now,
         image_retry_count: 0
       },
     ]);
+  // 追加した内容をログ出力
+  console.log("addUrl: 登録内容", {
+    url,
+    title,
+    category,
+    userId,
+    imageUrl,
+    isImageValid,
+    groupId,
+    now
+  });
   if (error) {
     console.error("Supabase insert error:", error);
     return { success: false, error };
   }
+  console.log("addUrl: 登録結果", data);
   return { success: true, data };
 }
 
@@ -80,11 +92,14 @@ export async function retryImageForUrl(urlId, getPreview, maxRetry = 3) {
   const isImageValid = imageUrl && !imageUrl.includes('placehold.co');
   const now = new Date().toISOString();
 
+  // 成功時はリトライ回数を0、失敗時は+1
+  const newRetryCount = isImageValid ? 0 : data.image_retry_count + 1;
+
   const { error: updateError } = await supabase.from('urls').update({
     thumbnail_url: imageUrl,
     is_image_valid: isImageValid,
     image_last_checked: now,
-    image_retry_count: data.image_retry_count + 1
+    image_retry_count: newRetryCount
   }).eq('id', urlId);
 
   if (updateError) return { success: false, error: updateError };

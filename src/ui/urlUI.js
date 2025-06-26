@@ -14,6 +14,7 @@ export function setupUrlHandlers() {
     const urlList = document.getElementById("urlList");
     const toggleBtn = document.getElementById("toggleFormBtn");
 
+    // URL登録フォームの開閉ボタン
     toggleBtn.addEventListener("click", () => {
         if (!window.currentGroupId) {
             alert("グループを選択してください");
@@ -24,6 +25,7 @@ export function setupUrlHandlers() {
         toggleBtn.innerText = showing ? "＋ URLを登録" : "× 閉じる";
     });
 
+    // URL登録フォーム送信処理
     urlForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         if (!window.currentUser || !window.currentGroupId) {
@@ -38,8 +40,22 @@ export function setupUrlHandlers() {
             return;
         }
         try {
+            // URLのプレビュー画像を取得
             const imageUrl = await getPreview(rawUrl);
-            const result = await addUrl(rawUrl, title, category, window.currentUser.id, imageUrl, window.currentGroupId);
+            // プレースホルダー画像じゃなければ有効と判定
+            const isImageValid = imageUrl && !imageUrl.includes('placehold.co');
+
+            // 重要: addUrlは7引数。6番目にisImageValid、7番目にgroupIdを渡す
+            const result = await addUrl(
+                rawUrl,
+                title,
+                category,
+                window.currentUser.id,
+                imageUrl,
+                isImageValid,
+                window.currentGroupId
+            );
+
             if (result.success) {
                 urlForm.reset();
                 urlForm.style.display = "none";
@@ -54,12 +70,9 @@ export function setupUrlHandlers() {
         }
     });
 
-    // --- ここから追加 ---
-    // リアルタイムでURL追加を監視
+    // リアルタイムURL追加監視用のサブスクリプション
     let urlSubscription = null;
     function subscribeRealtimeUrls() {
-        
-
         if (urlSubscription) {
             supabase.removeChannel(urlSubscription);
             urlSubscription = null;
@@ -76,22 +89,21 @@ export function setupUrlHandlers() {
                     filter: `group_id=eq.${window.currentGroupId}`
                 },
                 payload => {
-                    // 新しいURLが追加されたらリストを再取得
-                    
                     window.loadUrls && window.loadUrls();
                 }
             )
             .subscribe();
     }
 
-    // グループ選択時にサブスクリプションを張り直す
+    // グループ切替時にサブスクリプションを更新
     window.addEventListener("setCurrentGroup", () => {
         subscribeRealtimeUrls();
     });
 
-    // 初期化時にも呼ぶ
+    // 初期化時に一度サブスクリプション開始
     subscribeRealtimeUrls();
 
+    // URL一覧の読み込み＆表示関数
     window.loadUrls = async function loadUrls() {
         if (!window.currentUser || !window.currentGroupId) {
             urlList.innerHTML = "";
@@ -105,17 +117,20 @@ export function setupUrlHandlers() {
             .eq("group_id", window.currentGroupId);
 
         const urlsJson = JSON.stringify(urls);
-        if (urlsJson === lastUrlsJson) return;
+        if (urlsJson === lastUrlsJson) return; // 差分なし
         lastUrlsJson = urlsJson;
 
         urlList.innerHTML = "";
         lastUrlIds = new Set();
+
         if (!urls || urls.length === 0) {
             urlList.innerHTML = "<li>このグループにはURLがありません</li>";
             return;
         }
+
         urls.forEach(({ id, url, title, thumbnail_url }) => {
             const proxyThumbnail = thumbnail_url ? getProxyUrl(thumbnail_url) : "https://placehold.co/80x80";
+
             const li = document.createElement("li");
             li.dataset.id = id;
             li.style.display = "flex";
@@ -130,20 +145,16 @@ export function setupUrlHandlers() {
             img.style.objectFit = "cover";
             img.src = proxyThumbnail;
 
-            // --- ここから再取得処理 ---
+            // 画像読み込みエラー時のリトライ処理（Instagram対応）
             img.onerror = async () => {
-                // Instagram投稿URLが保存されている場合はそれを使う
-                // ここでは「url」がInstagram投稿URLだと仮定
                 const newImageUrl = await retryInstagramImageUrl(url);
                 if (newImageUrl && newImageUrl !== img.src) {
                     img.src = newImageUrl;
-                    // 必要ならDBも更新
                     await supabase.from("urls").update({ thumbnail_url: newImageUrl }).eq("id", id);
                 } else {
                     img.src = "https://placehold.co/80x80";
                 }
             };
-            // --- ここまで ---
 
             const link = document.createElement("a");
             link.target = "_blank";
@@ -175,7 +186,7 @@ export function setupUrlHandlers() {
         });
     };
 
-    // 定期ポーリングで差分だけ追加
+    // 7秒ごとに差分だけをポーリングで追加更新
     setInterval(async () => {
         if (!window.currentUser || !window.currentGroupId) return;
         const { data: urls } = await supabase
@@ -185,12 +196,12 @@ export function setupUrlHandlers() {
 
         if (!urls) return;
 
-        // 差分検出
+        // 差分だけ抽出
         const newUrls = urls.filter(u => !lastUrlIds.has(u.id));
         if (newUrls.length > 0) {
-            // 既存リストを維持しつつ新規分だけ追加
             newUrls.forEach(({ id, url, title, thumbnail_url }) => {
                 const proxyThumbnail = thumbnail_url ? getProxyUrl(thumbnail_url) : "https://placehold.co/80x80";
+
                 const li = document.createElement("li");
                 li.dataset.id = id;
                 li.style.display = "flex";
@@ -239,9 +250,10 @@ export function setupUrlHandlers() {
         // 初回やグループ切替時は全件セット
         if (lastUrlIds.size !== urls.length) {
             urlList.innerHTML = "";
-            lastUrlIds = new Set(); // ★ここで初期化
+            lastUrlIds = new Set();
             urls.forEach(({ id, url, title, thumbnail_url }) => {
                 const proxyThumbnail = thumbnail_url ? getProxyUrl(thumbnail_url) : "https://placehold.co/80x80";
+
                 const li = document.createElement("li");
                 li.dataset.id = id;
                 li.style.display = "flex";
@@ -287,5 +299,5 @@ export function setupUrlHandlers() {
                 lastUrlIds.add(id);
             });
         }
-    }, 7000); // 7秒ごとにチェック
+    }, 7000);
 }
