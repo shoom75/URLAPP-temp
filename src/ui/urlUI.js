@@ -147,6 +147,13 @@ export function setupUrlHandlers() {
 
             // 画像読み込みエラー時のリトライ処理（Instagram対応）
             img.onerror = async () => {
+                // 1回だけリトライするためのフラグをimgにセット
+                if (img.dataset.retried) {
+                    img.src = "https://placehold.co/80x80";
+                    return;
+                }
+                img.dataset.retried = "true";
+
                 const newImageUrl = await retryInstagramImageUrl(url);
                 if (newImageUrl && newImageUrl !== img.src) {
                     img.src = newImageUrl;
