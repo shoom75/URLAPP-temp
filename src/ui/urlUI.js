@@ -1,5 +1,5 @@
-import { addUrl, deleteUrl } from "../utils/dbOperations.js";
-import { getPreview, retryInstagramImageUrl } from "../utils/fetchPreview.js";
+import { addUrl, deleteUrl, getAndUpdateImagePreview, retryInstagramImageUrl } from "../utils/dbOperations.js";
+import { fetchImagePreview } from "../utils/fetchPreview.js";
 import { supabase } from "../utils/supabaseClient.js";
 import { getProxyUrl } from "./sharedUI.js";
 
@@ -38,7 +38,7 @@ export function setupUrlHandlers() {
             return;
         }
         try {
-            const imageUrl = await getPreview(rawUrl);
+            const imageUrl = await fetchImagePreview(rawUrl);
             const result = await addUrl(rawUrl, title, category, window.currentUser.id, imageUrl, window.currentGroupId);
             if (result.success) {
                 urlForm.reset();
@@ -132,12 +132,9 @@ export function setupUrlHandlers() {
 
             // --- ここから再取得処理 ---
             img.onerror = async () => {
-                // Instagram投稿URLが保存されている場合はそれを使う
-                // ここでは「url」がInstagram投稿URLだと仮定
-                const newImageUrl = await retryInstagramImageUrl(url);
+                const newImageUrl = await retryInstagramImageUrl(url, id);
                 if (newImageUrl && newImageUrl !== img.src) {
                     img.src = newImageUrl;
-                    // 必要ならDBも更新
                     await supabase.from("urls").update({ thumbnail_url: newImageUrl }).eq("id", id);
                 } else {
                     img.src = "https://placehold.co/80x80";
