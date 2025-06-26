@@ -9,7 +9,7 @@ export async function getPreview(url) {
 
         // プロキシ経由で画像を取得
         const rawImageUrl = data.image || "https://placehold.co/300x200";
-       const proxiedImageUrl = `https://proxy-worker.shoom7575.workers.dev/?url=${encodeURIComponent(rawImageUrl)}`;
+        const proxiedImageUrl = `https://proxy-worker.shoom7575.workers.dev/?url=${encodeURIComponent(rawImageUrl)}`;
         return proxiedImageUrl;
     } catch (error) {
         console.error("画像URL取得エラー:", error);

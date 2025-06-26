@@ -2,12 +2,24 @@ import { supabase } from "./supabaseClient.js";
 
 /**
  * URLとサムネイルURLを Supabase に保存する（グループID対応）
+ * 画像取得の成否・リトライ回数も保存
  */
-export async function addUrl(url, title, category, userId, imageUrl, groupId) {
+export async function addUrl(url, title, category, userId, imageUrl, isImageValid, groupId) {
+  const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("urls")
     .insert([
-      { url, title, category, user_id: userId, thumbnail_url: imageUrl, group_id: groupId },
+      {
+        url,
+        title,
+        category,
+        user_id: userId,
+        thumbnail_url: imageUrl,
+        group_id: groupId,
+        is_image_valid: isImageValid,
+        image_last_checked: now,
+        image_retry_count: 0
+      },
     ]);
   if (error) {
     console.error("Supabase insert error:", error);
@@ -52,4 +64,29 @@ export async function deleteUrl(id) {
     return { success: false, error };
   }
   return { success: true, data };
+}
+
+/**
+ * 画像再取得処理（失敗時のみ、最大リトライ回数まで）
+ */
+export async function retryImageForUrl(urlId, getPreview, maxRetry = 3) {
+  const { data, error } = await supabase.from('urls').select('*').eq('id', urlId).single();
+  if (error || !data) return { success: false, error };
+
+  if (data.is_image_valid) return { success: true, message: "Already valid" };
+  if (data.image_retry_count >= maxRetry) return { success: false, message: "Retry limit reached" };
+
+  const imageUrl = await getPreview(data.url);
+  const isImageValid = imageUrl && !imageUrl.includes('placehold.co');
+  const now = new Date().toISOString();
+
+  const { error: updateError } = await supabase.from('urls').update({
+    thumbnail_url: imageUrl,
+    is_image_valid: isImageValid,
+    image_last_checked: now,
+    image_retry_count: data.image_retry_count + 1
+  }).eq('id', urlId);
+
+  if (updateError) return { success: false, error: updateError };
+  return { success: true, isImageValid };
 }
