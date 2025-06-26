@@ -6,6 +6,7 @@ const PLACEHOLDER_URL = "https://placehold.co/300x200";
 const proxyImageUrl = (url) =>
   `https://proxy-worker.shoom7575.workers.dev/?url=${encodeURIComponent(url)}`;
 
+<<<<<<< master
 /**
  * サムネイル画像URLを取得し、成否と画像URLを返す
  * @param {string} url - 対象URL
@@ -30,5 +31,15 @@ export async function fetchImagePreview(url) {
       proxiedImageUrl: PLACEHOLDER_URL,
     };
   }
+=======
+        // プロキシ経由で画像を取得
+        const rawImageUrl = data.image || "https://placehold.co/300x200";
+       const proxiedImageUrl = `https://proxy-worker.shoom7575.workers.dev/?url=${encodeURIComponent(rawImageUrl)}`;
+        return proxiedImageUrl;
+    } catch (error) {
+        console.error("画像URL取得エラー:", error);
+        return "https://placehold.co/300x200";
+    }
+>>>>>>> main
 }
 
